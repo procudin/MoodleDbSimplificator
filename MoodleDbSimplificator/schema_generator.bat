@@ -1,0 +1,2 @@
+﻿# https://learn.microsoft.com/en-us/ef/core/cli/dotnet
+dotnet ef dbcontext scaffold "Server=localhost;Database=moodle;Uid=root;Pwd=;" Pomelo.EntityFrameworkCore.MySql --output-dir MoodleDb/V39/Entities --context-dir MoodleDb/V39/ --context Moodle39DbContext --no-onconfiguring --force
