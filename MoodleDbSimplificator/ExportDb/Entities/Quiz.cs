@@ -23,5 +23,15 @@ public class Quiz
     public QuestionBehaviour Behaviour { get; set; }
     public QuizGradeMethod GradeMethod { get; set; }
     
+    /// <summary>
+    /// The total that the quiz overall grade is scaled to be out of.
+    /// </summary>
+    public decimal Grade { get; set; }
+    
+    /// <summary>
+    /// The total of all the question instance maxmarks.
+    /// </summary>
+    public decimal SumGrades { get; set; }
+    
     public IList<QuizQuestion>? Questions { get; set; }
 }

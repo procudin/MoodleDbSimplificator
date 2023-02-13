@@ -14,6 +14,7 @@ public class ExportDbContext : DbContext
     public DbSet<Course> Courses { get; set; } = null!;
     public DbSet<Quiz> Quizzes { get; set; } = null!;
     public DbSet<QuizQuestion> QuizQuestions { get; set; } = null!;
+    public DbSet<QuizAttempt> QuizAttempts { get; set; } = null!;
     public DbSet<Question> Questions { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -53,6 +54,19 @@ public class ExportDbContext : DbContext
             qq.HasOne(x => x.Question)
                 .WithMany()
                 .HasForeignKey(x => x.QuestionId);
+        });
+        
+        modelBuilder.Entity<QuizAttempt>(qa =>
+        {
+            qa.HasKey(x => x.QuizAttemptId);
+
+            qa.HasOne(x => x.Quiz)
+                .WithMany()
+                .HasForeignKey(x => x.QuizId);
+            
+            qa.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId);
         });
     }
 }

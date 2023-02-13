@@ -3,7 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using MoodleDbSimplificator.ExportDb;
 using MoodleDbSimplificator.ExportDb.Entities;
+using MoodleDbSimplificator.ExportDb.Entities.Enums;
 using MoodleDbSimplificator.MoodleDb.V39;
+using MoodleDbSimplificator.MoodleDb.V39.Entities;
 
 namespace MoodleDbSimplificator.Services;
 
@@ -36,6 +38,8 @@ public class Moodle39ExportService : IMoodle39ExportService
         await ExportQuestions(cancellationToken);
         await ExportQuizQuestions(cancellationToken);
         await ExportUsers(cancellationToken);
+        await ExportQuizAttempts(cancellationToken);
+        
         
     }
 
@@ -88,6 +92,8 @@ public class Moodle39ExportService : IMoodle39ExportService
                 TimeLimit   = TimeSpan.FromSeconds(q.Timelimit),
                 Behaviour   = QuestionBehaviourParser.Parse(q.Preferredbehaviour),
                 GradeMethod = (QuizGradeMethod)q.Grademethod,
+                Grade       = q.Grade,
+                SumGrades   = q.Sumgrades,
             })
             .ToListAsync(cancellationToken: cancellationToken);
         await _exportDb.BulkInsertAsync(quizzesToAdd, cancellationToken: cancellationToken);
@@ -129,5 +135,28 @@ public class Moodle39ExportService : IMoodle39ExportService
         var questionsToAdd = await query.ToListAsync(cancellationToken: cancellationToken);
         await _exportDb.BulkInsertAsync(questionsToAdd, cancellationToken: cancellationToken);
         _logger.LogInformation("Exported {} questions", questionsToAdd.Count);
+    }
+
+    private async Task ExportQuizAttempts(CancellationToken cancellationToken)
+    {
+        var query = 
+            from quizAttempt in _moodleDb.MdlQuizAttempts.AsNoTracking()
+                orderby quizAttempt.Quiz, quizAttempt.Userid, quizAttempt.Attempt
+            join user in _moodleDb.MdlUsers.AsNoTracking() on quizAttempt.Userid equals user.Id 
+            join quiz in _moodleDb.MdlQuizzes.AsNoTracking() on quizAttempt.Quiz equals quiz.Id
+            select new QuizAttempt
+            {
+                QuizAttemptId = quizAttempt.Id,
+                QuizId        = quizAttempt.Quiz,
+                UserId        = quizAttempt.Userid,
+                AttemptNumber = quizAttempt.Attempt,
+                State         = QuizAttemptStateParser.Parse(quizAttempt.State),
+                TimeStart     = DateTimeOffset.FromUnixTimeSeconds(quizAttempt.Timestart).UtcDateTime,
+                TimeFinish    = DateTimeOffset.FromUnixTimeSeconds(quizAttempt.Timefinish).UtcDateTime,
+                SumGrades     = quizAttempt.Sumgrades,
+            };
+        var qaToAdd = await query.ToListAsync(cancellationToken: cancellationToken);
+        await _exportDb.BulkInsertAsync(qaToAdd, cancellationToken: cancellationToken);
+        _logger.LogInformation("Exported {} quiz attempts", qaToAdd.Count);
     }
 }
