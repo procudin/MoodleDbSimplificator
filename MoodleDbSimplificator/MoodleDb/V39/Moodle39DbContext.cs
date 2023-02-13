@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using MoodleDbSimplificator.MoodleDb.V39.Entities;
 
 namespace MoodleDbSimplificator.MoodleDb.V39;

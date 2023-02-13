@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using MoodleDbSimplificator.ExportDb;
 using MoodleDbSimplificator.MoodleDb.V39;
 using MoodleDbSimplificator.Services;
 
@@ -39,6 +40,11 @@ public class Program
                 services.AddDbContext<Moodle39DbContext>(options =>
                     options.UseMySql(
                         connectionString: hostContext.Configuration.GetConnectionString("Moodle39"), 
+                        serverVersion: new MariaDbServerVersion(new Version(10, 4, 8))));
+                
+                services.AddDbContext<ExportDbContext>(options =>
+                    options.UseMySql(
+                        connectionString: hostContext.Configuration.GetConnectionString("Target"), 
                         serverVersion: new MariaDbServerVersion(new Version(10, 4, 8))));
 
                 services.AddScoped<IMoodle39ExportService, Moodle39ExportService>();
