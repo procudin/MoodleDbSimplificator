@@ -16,6 +16,7 @@ public class ExportDbContext : DbContext
     public DbSet<QuizQuestion> QuizQuestions { get; set; } = null!;
     public DbSet<QuizAttempt> QuizAttempts { get; set; } = null!;
     public DbSet<Question> Questions { get; set; } = null!;
+    public DbSet<QuestionAttempt> QuestionAttempts { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -41,6 +42,19 @@ public class ExportDbContext : DbContext
         modelBuilder.Entity<Question>(question =>
         {
             question.HasKey(x => x.QuestionId);
+        });
+        
+        modelBuilder.Entity<QuestionAttempt>(qa =>
+        {
+            qa.HasKey(x => x.QuestionAttemptId);
+            
+            qa.HasOne(x => x.Question)
+                .WithMany()
+                .HasForeignKey(x => x.QuestionId);
+            
+            qa.HasOne(x => x.QuizAttempt)
+                .WithMany(x => x.QuestionAttempts)
+                .HasForeignKey(x => x.QuizAttemptId);
         });
         
         modelBuilder.Entity<QuizQuestion>(qq =>

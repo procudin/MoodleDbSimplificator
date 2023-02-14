@@ -20,4 +20,6 @@ public class QuizAttempt
     public DateTime TimeFinish { get; set; }
     
     public decimal? SumGrades { get; set; }
+    
+    public IList<QuestionAttempt>? QuestionAttempts { get; set; }
 }

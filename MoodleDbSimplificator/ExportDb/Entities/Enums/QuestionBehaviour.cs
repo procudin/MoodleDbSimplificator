@@ -12,12 +12,14 @@ public enum QuestionBehaviour
     /// </summary>
     Adaptive,
     
+    AdaptiveHint,
+    
     Survey,
     
     /// <summary>
     /// Used for essay questions (irrespective of what the quiz is set to) but you can now choose to have every question in the quiz manually graded if you wish
     /// </summary>
-    Manual,
+    //Manual,
     
     /// <summary>
     /// Used for allowing multiple attempts on the same question (perhaps with a grade penalty)
@@ -48,6 +50,7 @@ public static class QuestionBehaviourParser
         {
             "deferredfeedback" => QuestionBehaviour.DeferredFeedback,
             "adaptive"         => QuestionBehaviour.Adaptive,
+            "adaptivehints"    => QuestionBehaviour.AdaptiveHint,
             "survey"           => QuestionBehaviour.Survey,
             "interactive"      => QuestionBehaviour.InteractiveMultipleTries,
             _                  => throw new ArgumentException($"Unexpected behaviour '{input}'"),

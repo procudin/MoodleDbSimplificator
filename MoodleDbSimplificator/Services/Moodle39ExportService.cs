@@ -16,6 +16,7 @@ public interface IMoodle39ExportService
 
 public class Moodle39ExportService : IMoodle39ExportService
 {
+    private readonly int PageSize = 30000;
     private readonly ExportDbContext _exportDb;
     private readonly Moodle39DbContext _moodleDb;
     private readonly ILogger<Moodle39ExportService> _logger;
@@ -39,7 +40,7 @@ public class Moodle39ExportService : IMoodle39ExportService
         await ExportQuizQuestions(cancellationToken);
         await ExportUsers(cancellationToken);
         await ExportQuizAttempts(cancellationToken);
-        
+        await ExportQuestionAttempts(cancellationToken);
         
     }
 
@@ -158,5 +159,50 @@ public class Moodle39ExportService : IMoodle39ExportService
         var qaToAdd = await query.ToListAsync(cancellationToken: cancellationToken);
         await _exportDb.BulkInsertAsync(qaToAdd, cancellationToken: cancellationToken);
         _logger.LogInformation("Exported {} quiz attempts", qaToAdd.Count);
+    }
+
+    private async Task ExportQuestionAttempts(CancellationToken cancellationToken)
+    {
+        var query =
+            from quizAttempt in _moodleDb.MdlQuizAttempts.AsNoTracking()
+            join questionUsage in _moodleDb.MdlQuestionUsages.AsNoTracking()
+                on quizAttempt.Uniqueid equals questionUsage.Id
+            join questionAttempt in _moodleDb.MdlQuestionAttempts.AsNoTracking()
+                on questionUsage.Id equals questionAttempt.Questionusageid
+            join user in _moodleDb.MdlUsers.AsNoTracking() on quizAttempt.Userid equals user.Id 
+            join quiz in _moodleDb.MdlQuizzes.AsNoTracking() on quizAttempt.Quiz equals quiz.Id
+            orderby questionAttempt.Id
+            select new QuestionAttempt
+            {
+                QuestionAttemptId = questionAttempt.Id,
+                QuestionId = questionAttempt.Questionid,
+                QuizAttemptId = quizAttempt.Id,
+                Behaviour = QuestionBehaviourParser.Parse(questionAttempt.Behaviour),
+                UpdatedAt = DateTimeOffset.FromUnixTimeSeconds(questionAttempt.Timemodified).UtcDateTime,
+            };
+        
+        var totalCount = await query.CountAsync(cancellationToken: cancellationToken);
+        var loadedCount = 0;
+        await foreach (var attemptChunk in query.AsChunkedAsyncEnumerable(PageSize).WithCancellation(cancellationToken))
+        {
+            await _exportDb.BulkInsertAsync(attemptChunk, cancellationToken: cancellationToken);
+            loadedCount += attemptChunk.Count;
+            _logger.LogInformation("Exported {}/{} question attempts", loadedCount, totalCount);
+        }
+    }
+}
+
+public static class Extensions
+{
+    public static async IAsyncEnumerable<IList<T>> AsChunkedAsyncEnumerable<T>(this IQueryable<T> source, int chunkSize)
+    {
+        var offset = 0;
+        List<T> chunk;
+        do
+        {
+            chunk = await source.Skip(offset).Take(chunkSize).ToListAsync();
+            yield return chunk;
+            offset += chunk.Count;
+        } while (chunk.Count == chunkSize);
     }
 }
