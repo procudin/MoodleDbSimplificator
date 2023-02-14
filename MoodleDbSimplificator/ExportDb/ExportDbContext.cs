@@ -1,5 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using MoodleDbSimplificator.ExportDb.Entities;
+using System.Text.Json;
 
 namespace MoodleDbSimplificator.ExportDb;
 
@@ -17,6 +19,7 @@ public class ExportDbContext : DbContext
     public DbSet<QuizAttempt> QuizAttempts { get; set; } = null!;
     public DbSet<Question> Questions { get; set; } = null!;
     public DbSet<QuestionAttempt> QuestionAttempts { get; set; } = null!;
+    public DbSet<QuestionAttemptStep> QuestionAttemptSteps { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -55,6 +58,22 @@ public class ExportDbContext : DbContext
             qa.HasOne(x => x.QuizAttempt)
                 .WithMany(x => x.QuestionAttempts)
                 .HasForeignKey(x => x.QuizAttemptId);
+        });
+        
+        modelBuilder.Entity<QuestionAttemptStep>(qas =>
+        {
+            qas.HasKey(x => x.QuestionAttemptStepId);
+            
+            qas.HasOne(x => x.QuestionAttempt)
+                .WithMany(x => x.Steps)
+                .HasForeignKey(x => x.QuestionAttemptId);
+
+            qas.Property(x => x.Data)
+                .HasColumnType("json");
+            qas.Property(x => x.Data)
+                .HasConversion(
+                    v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
+                    v => JsonSerializer.Deserialize<Dictionary<string, string>>(v, JsonSerializerOptions.Default));
         });
         
         modelBuilder.Entity<QuizQuestion>(qq =>

@@ -41,7 +41,7 @@ public class Moodle39ExportService : IMoodle39ExportService
         await ExportUsers(cancellationToken);
         await ExportQuizAttempts(cancellationToken);
         await ExportQuestionAttempts(cancellationToken);
-        
+        await ExportQuestionAttemptSteps(cancellationToken);
     }
 
     private async Task ExportUsers(CancellationToken cancellationToken)
@@ -188,6 +188,48 @@ public class Moodle39ExportService : IMoodle39ExportService
             await _exportDb.BulkInsertAsync(attemptChunk, cancellationToken: cancellationToken);
             loadedCount += attemptChunk.Count;
             _logger.LogInformation("Exported {}/{} question attempts", loadedCount, totalCount);
+        }
+    }
+    
+    private async Task ExportQuestionAttemptSteps(CancellationToken cancellationToken)
+    {
+        var savedAttempsIds = await _exportDb.QuestionAttempts
+            .OrderBy(x => x.QuestionAttemptId)
+            .Select(x => x.QuestionAttemptId)
+            .ToListAsync(cancellationToken: cancellationToken);
+
+        var loadedCount = 0;
+        foreach (var attemptsChunk in savedAttempsIds.Chunk(10000))
+        {
+            var query = 
+                from questionAttempt in _moodleDb.MdlQuestionAttempts.AsNoTracking()
+                join questionAttemptStep in _moodleDb.MdlQuestionAttemptSteps.AsNoTracking()
+                    on questionAttempt.Id equals questionAttemptStep.Questionattemptid
+                where attemptsChunk.Contains(questionAttempt.Id)
+                select new
+                {
+                    QuestionAttemptStepId = questionAttemptStep.Id,
+                    QuestionAttemptId = questionAttemptStep.Questionattemptid,
+                    Order = questionAttemptStep.Sequencenumber,
+                    State = questionAttemptStep.State,
+                    Data = _moodleDb.MdlQuestionAttemptStepData.AsNoTracking().Where(z => z.Attemptstepid == questionAttemptStep.Id)
+                        .Select(z => new { z.Name, z.Value }).ToArray(),
+                    CreatedAt = DateTimeOffset.FromUnixTimeSeconds(questionAttemptStep.Timecreated).UtcDateTime,
+                };
+            var stepsChunk = await query.AsAsyncEnumerable()
+                .Select(x => new QuestionAttemptStep
+                {
+                    QuestionAttemptStepId = x.QuestionAttemptStepId,
+                    QuestionAttemptId     = x.QuestionAttemptId,
+                    Order                 = x.Order,
+                    State                 = x.State,
+                    Data                  = x.Data.ToDictionary(z => z.Name, z => z.Value),
+                    CreatedAt             = x.CreatedAt,
+                })
+                .ToListAsync(cancellationToken: cancellationToken);
+            await _exportDb.BulkInsertAsync(stepsChunk, cancellationToken: cancellationToken);
+            loadedCount += attemptsChunk.Length;
+            _logger.LogInformation("Exported {}/{} question attempt steps", loadedCount, savedAttempsIds.Count);
         }
     }
 }

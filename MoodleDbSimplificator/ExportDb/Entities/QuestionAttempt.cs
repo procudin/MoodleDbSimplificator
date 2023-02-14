@@ -12,4 +12,6 @@ public class QuestionAttempt
     
     public QuestionBehaviour Behaviour { get; set; }
     public DateTime UpdatedAt { get; set; }
+    
+    public IList<QuestionAttemptStep>? Steps { get; set; }
 }
