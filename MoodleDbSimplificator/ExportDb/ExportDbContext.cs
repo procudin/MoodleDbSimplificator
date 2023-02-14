@@ -21,6 +21,11 @@ public class ExportDbContext : DbContext
     public DbSet<QuestionAttempt> QuestionAttempts { get; set; } = null!;
     public DbSet<QuestionAttemptStep> QuestionAttemptSteps { get; set; } = null!;
 
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.UseSnakeCaseNamingConvention();
+    }
+    
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<User>(user =>
