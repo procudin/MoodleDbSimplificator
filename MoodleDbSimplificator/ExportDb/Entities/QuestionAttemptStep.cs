@@ -11,6 +11,6 @@ public class QuestionAttemptStep
     
     public long Order { get; set; }
     public string State { get; set; } = null!;
-    public Dictionary<string, string>? Data { get; set; }
+    public Dictionary<string, string>? StateData { get; set; }
     public DateTime CreatedAt { get; set; }
 }

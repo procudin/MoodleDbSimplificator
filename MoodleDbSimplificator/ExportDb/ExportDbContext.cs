@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using MoodleDbSimplificator.ExportDb.Entities;
+using MoodleDbSimplificator.ExportDb.Entities.Enums;
 using System.Text.Json;
 
 namespace MoodleDbSimplificator.ExportDb;
@@ -25,7 +26,20 @@ public class ExportDbContext : DbContext
     {
         optionsBuilder.UseSnakeCaseNamingConvention();
     }
-    
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder
+            .Properties<QuestionBehaviour>()
+            .HaveConversion<string>();
+        configurationBuilder
+            .Properties<QuizGradeMethod>()
+            .HaveConversion<string>();
+        configurationBuilder
+            .Properties<QuizAttemptState>()
+            .HaveConversion<string>();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<User>(user =>
@@ -73,9 +87,9 @@ public class ExportDbContext : DbContext
                 .WithMany(x => x.Steps)
                 .HasForeignKey(x => x.QuestionAttemptId);
 
-            qas.Property(x => x.Data)
+            qas.Property(x => x.StateData)
                 .HasColumnType("json");
-            qas.Property(x => x.Data)
+            qas.Property(x => x.StateData)
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
                     v => JsonSerializer.Deserialize<Dictionary<string, string>>(v, JsonSerializerOptions.Default));

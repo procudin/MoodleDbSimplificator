@@ -10,5 +10,4 @@ public class QuizQuestion
     
     public long Order { get; set; }
     public long PageNumber { get; set; }
-    public bool RequirePrevious { get; set; }
 }

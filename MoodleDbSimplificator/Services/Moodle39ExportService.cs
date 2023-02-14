@@ -110,7 +110,6 @@ public class Moodle39ExportService : IMoodle39ExportService
                 QuestionId      = q.Questionid,
                 Order           = q.Slot,
                 PageNumber      = q.Page,
-                RequirePrevious = q.Requireprevious != 0,
             })
             .ToListAsync(cancellationToken: cancellationToken);
         await _exportDb.BulkInsertAsync(qqToAdd, cancellationToken: cancellationToken);
@@ -209,12 +208,15 @@ public class Moodle39ExportService : IMoodle39ExportService
                 select new
                 {
                     QuestionAttemptStepId = questionAttemptStep.Id,
-                    QuestionAttemptId = questionAttemptStep.Questionattemptid,
-                    Order = questionAttemptStep.Sequencenumber,
-                    State = questionAttemptStep.State,
-                    Data = _moodleDb.MdlQuestionAttemptStepData.AsNoTracking().Where(z => z.Attemptstepid == questionAttemptStep.Id)
+                    QuestionAttemptId     = questionAttemptStep.Questionattemptid,
+                    Order                 = questionAttemptStep.Sequencenumber,
+                    State                 = questionAttemptStep.State,
+                    StateData             = _moodleDb.MdlQuestionAttemptStepData.AsNoTracking()
+                        .Where(z => z.Attemptstepid == questionAttemptStep.Id)
+                        .Where(z => z.Name.StartsWith("-"))
+                        //.Where(z => z.Name != "answer" && !z.Name.StartsWith("_"))
                         .Select(z => new { z.Name, z.Value }).ToArray(),
-                    CreatedAt = DateTimeOffset.FromUnixTimeSeconds(questionAttemptStep.Timecreated).UtcDateTime,
+                    CreatedAt             = DateTimeOffset.FromUnixTimeSeconds(questionAttemptStep.Timecreated).UtcDateTime,
                 };
             var stepsChunk = await query.AsAsyncEnumerable()
                 .Select(x => new QuestionAttemptStep
@@ -223,7 +225,7 @@ public class Moodle39ExportService : IMoodle39ExportService
                     QuestionAttemptId     = x.QuestionAttemptId,
                     Order                 = x.Order,
                     State                 = x.State,
-                    Data                  = x.Data.ToDictionary(z => z.Name, z => z.Value),
+                    StateData             = x.StateData.Length > 0 ? x.StateData.ToDictionary(z => z.Name, z => z.Value) : null,
                     CreatedAt             = x.CreatedAt,
                 })
                 .ToListAsync(cancellationToken: cancellationToken);
