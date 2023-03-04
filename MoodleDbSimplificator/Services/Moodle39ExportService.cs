@@ -213,23 +213,101 @@ public class Moodle39ExportService : IMoodle39ExportService
                     State                 = questionAttemptStep.State,
                     StateData             = _moodleDb.MdlQuestionAttemptStepData.AsNoTracking()
                         .Where(z => z.Attemptstepid == questionAttemptStep.Id)
-                        .Where(z => z.Name.StartsWith("-"))
+                        //.Where(z => z.Name.StartsWith("-"))
                         //.Where(z => z.Name != "answer" && !z.Name.StartsWith("_"))
-                        .Select(z => new { z.Name, z.Value }).ToArray(),
+                        .Select(z => new { z.Name, z.Value })
+                        .ToArray(),
                     CreatedAt             = DateTimeOffset.FromUnixTimeSeconds(questionAttemptStep.Timecreated).UtcDateTime,
                 };
-            var stepsChunk = await query.AsAsyncEnumerable()
-                .Select(x => new QuestionAttemptStep
+            var attemptsWithSteps = (await query.ToListAsync(cancellationToken: cancellationToken))
+                .GroupBy(x => x.QuestionAttemptId)
+                .Select(x => (
+                    AttemptId: x.Key,
+                    Steps: x.OrderBy(z => z.Order).ToList()
+                ))
+                .ToList();
+
+            var valuesToAdd = new List<QuestionAttemptStep>();
+            foreach (var (_, attemptSteps) in attemptsWithSteps)
+            {
+                foreach (var attemptStep in attemptSteps)
                 {
-                    QuestionAttemptStepId = x.QuestionAttemptStepId,
-                    QuestionAttemptId     = x.QuestionAttemptId,
-                    Order                 = x.Order,
-                    State                 = x.State,
-                    StateData             = x.StateData.Length > 0 ? x.StateData.ToDictionary(z => z.Name, z => z.Value) : null,
-                    CreatedAt             = x.CreatedAt,
-                })
-                .ToListAsync(cancellationToken: cancellationToken);
-            await _exportDb.BulkInsertAsync(stepsChunk, cancellationToken: cancellationToken);
+                    if (attemptStep.Order == 0)
+                    {
+                        // первый стейт всегда 'todo', поэтому его пропускаем
+                        continue;
+                    }
+
+                    if (attemptStep.StateData.Any(x => x.Name == "-submit" && x.Value == "1"))
+                    {
+                        // дан ответ, смотрим по стейту какой он
+                        var state = attemptStep.State switch
+                        {
+                            "todo" => QuestionAttemptStepState.IncorrectAnswer,
+                            "complete" => QuestionAttemptStepState.CorrectAnswer,
+                            _ => QuestionAttemptStepState.Undefined,
+                        };
+
+                        valuesToAdd.Add(new QuestionAttemptStep
+                        {
+                            QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
+                            QuestionAttemptId = attemptStep.QuestionAttemptId,
+                            Order = attemptStep.Order,
+                            State = state,
+                            RawState = attemptStep.State,
+                            RawStateData = attemptStep.StateData.Length > 0
+                                    ? attemptStep.StateData.ToDictionary(z => z.Name, z => z.Value)
+                                    : null,
+                            CreatedAt = attemptStep.CreatedAt,
+                        });
+                        continue;
+                    }
+                    
+                    
+                    if (attemptStep.StateData.Any(x => x.Name == "-_hashint" && x.Value == "1"))
+                    {
+                        // данана посказка
+                        var state = true switch
+                        {
+                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-wherepic_") && x.Value == "1") => QuestionAttemptStepState.HintWherePic,
+                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-whatis_") && x.Value == "1") => QuestionAttemptStepState.HintWhatIs,
+                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-wheretxt_") && x.Value == "1") => QuestionAttemptStepState.HintWhereText,
+                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-hintnextlexembtn") && x.Value == "1") => QuestionAttemptStepState.HintNextLexem,
+                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-hintnextcharbtn") && x.Value == "1") => QuestionAttemptStepState.HintNextChar,
+                            _ => QuestionAttemptStepState.Undefined,
+                        };
+
+                        valuesToAdd.Add(new QuestionAttemptStep
+                        {
+                            QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
+                            QuestionAttemptId = attemptStep.QuestionAttemptId,
+                            Order = attemptStep.Order,
+                            State = state,
+                            RawState = attemptStep.State,
+                            RawStateData = attemptStep.StateData.Length > 0
+                                    ? attemptStep.StateData.ToDictionary(z => z.Name, z => z.Value)
+                                    : null,
+                            CreatedAt = attemptStep.CreatedAt,
+                        });
+                        continue;
+                    }
+
+                    valuesToAdd.Add(new QuestionAttemptStep
+                    {
+                        QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
+                        QuestionAttemptId = attemptStep.QuestionAttemptId,
+                        Order = attemptStep.Order,
+                        State = QuestionAttemptStepState.Undefined,
+                        RawState = attemptStep.State,
+                        RawStateData = attemptStep.StateData.Length > 0
+                                ? attemptStep.StateData.ToDictionary(z => z.Name, z => z.Value)
+                                : null,
+                        CreatedAt = attemptStep.CreatedAt,
+                    });
+                }
+            }
+            
+            await _exportDb.BulkInsertAsync(valuesToAdd, cancellationToken: cancellationToken);
             loadedCount += attemptsChunk.Length;
             _logger.LogInformation("Exported {}/{} question attempt steps", loadedCount, savedAttempsIds.Count);
         }

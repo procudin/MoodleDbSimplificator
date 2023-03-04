@@ -87,9 +87,9 @@ public class ExportDbContext : DbContext
                 .WithMany(x => x.Steps)
                 .HasForeignKey(x => x.QuestionAttemptId);
 
-            qas.Property(x => x.StateData)
+            qas.Property(x => x.RawStateData)
                 .HasColumnType("json");
-            qas.Property(x => x.StateData)
+            qas.Property(x => x.RawStateData)
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
                     v => JsonSerializer.Deserialize<Dictionary<string, string>>(v, JsonSerializerOptions.Default));
