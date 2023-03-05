@@ -10,6 +10,7 @@ public enum QuestionAttemptStepState
     Answer,
     RightAnswer,
     WrongAnswer,
+    PartialCorrectAnswer,
     
     // запросы подсказок
     HintWhatIs,

@@ -5,8 +5,8 @@ using MoodleDbSimplificator.ExportDb;
 using MoodleDbSimplificator.ExportDb.Entities;
 using MoodleDbSimplificator.ExportDb.Entities.Enums;
 using MoodleDbSimplificator.MoodleDb.V39;
-using MoodleDbSimplificator.MoodleDb.V39.Entities;
 using MoodleDbSimplificator.Utils;
+using System.Globalization;
 using System.Text.Json;
 
 namespace MoodleDbSimplificator.Services;
@@ -18,7 +18,7 @@ public interface IMoodle39ExportService
 
 public class Moodle39ExportService : IMoodle39ExportService
 {
-    private readonly int PageSize = 30000;
+    private const int PageSize = 30000;
     private readonly ExportDbContext _exportDb;
     private readonly Moodle39DbContext _moodleDb;
     private readonly ILogger<Moodle39ExportService> _logger;
@@ -282,20 +282,14 @@ public class Moodle39ExportService : IMoodle39ExportService
                             QuestionAttemptId = attemptStep.QuestionAttemptId,
                             Order = order++,
                             State = state,
-                            /*
-                            RawState = attemptStep.State,
-                            RawStateData = attemptStep.StateData.Length > 0
-                                ? attemptStep.StateData.ToDictionary(z => z.Name, z => z.Value)
-                                : null,
-                            */
                             CreatedAt = attemptStep.CreatedAt,
                         });
                         
                         continue;
                     }
                     
-                    // gaveup добавялем если нашли пустой ответ или состояние gaveup
-                    if (attemptStep.State is "gaveup" || attemptStep.StateData.Any(x => x.Name == "answer" && string.IsNullOrEmpty(x.Value)))
+                    // gaveup добавялем если нашли состояние gaveup
+                    if (attemptStep.State is "gaveup")
                     {
                         valuesToAdd.Add(new QuestionAttemptStep
                         {
@@ -305,10 +299,16 @@ public class Moodle39ExportService : IMoodle39ExportService
                             State = QuestionAttemptStepState.GaveUp,
                             CreatedAt = attemptStep.CreatedAt,
                         });
-                        break;
+                        continue;
                     }
 
                     // дан ответ
+                    // не уверен, что тут учел все случаи. Конкретно тут учтены следующие:
+                    // 1) когда одновременно есть -submit и -_try в стейте - в основном это встречается в адаптивных попытках
+                    // 2) когда в стейте содержится только 'answer' и больше ничего, такое может встретиться во многих типах вопросов, не стал перечислять явно все виды
+                    // 3) match и multianswer могут хранить свои ответы в полях вида sub\d и sub\d_answer, поэтому считаем ответами все шаги, содержащие в стейте только таки поля
+                    // 4) multichoice хранит свои ответы в полях вида choice\d, поэтому считаем ответами все шаги, содержащие в стейте только таки поля
+                    // 5) немного релаксируем правило (2) для correctwriting и preg, так как там answer может встретиться в окружении других полей. Возможно в будущем можно будет смержить с правилом (2), но пока не решился
                     if (attemptStep.State.IsActiveMdlAttemptStemp() && attemptStep.StateData.Any(x => x.Name is "-submit" && x.Value == "1") && attemptStep.StateData.Any(x => x.Name is "-_try")
                         || attemptStep.State.IsActiveMdlAttemptStemp() && attemptStep.StateData is [{ Name: "answer"}]
                         || attemptStep.State.IsActiveMdlAttemptStemp() && attemptStep.QType is "match" or "multianswer" && attemptStep.StateData.All(x => x.Name.StartsWith("sub"))
@@ -316,16 +316,22 @@ public class Moodle39ExportService : IMoodle39ExportService
                         || attemptStep.State.IsActiveMdlAttemptStemp() && attemptStep.QType is "correctwriting" or "preg" && attemptStep.StateData.Any(x => x.Name is "answer")
                         )
                     {
-                        var fraction = attemptStep.StateData.FirstOrDefault(x => x.Name == "-_rawfraction")?.Value is { } rawFrastionStr && double.TryParse(rawFrastionStr, out var rawFraction)
+                        // пытаемся опредить правильность ответа
+                        var fraction = attemptStep.StateData.FirstOrDefault(x => x.Name == "-_rawfraction")?.Value is { } rawFrastionStr 
+                                       && decimal.TryParse(rawFrastionStr, CultureInfo.InvariantCulture, out var rawFraction)
                                 ? rawFraction
-                                : (double?)null;
+                                : (decimal?)null;
                         var state = fraction switch
                         {
                             null => QuestionAttemptStepState.Answer,
-                            1.0d => QuestionAttemptStepState.RightAnswer,
-                            0.0d => QuestionAttemptStepState.WrongAnswer,
-                            _ => throw new ArgumentOutOfRangeException(),
+                            1.0M => QuestionAttemptStepState.RightAnswer,
+                            0.0M => QuestionAttemptStepState.WrongAnswer,
+                            _ => QuestionAttemptStepState.PartialCorrectAnswer,
                         };
+                        
+                        // особый кейс для случая ответа перед gaveUp-оп. Мы пропускаем такой ответ, потому что он всегда пустой
+                        if (state == QuestionAttemptStepState.Answer && nextAttemptSteps.FirstOrDefault() is { State: "gaveup" })
+                            continue;
                         
                         valuesToAdd.Add(new QuestionAttemptStep
                         {
@@ -363,6 +369,7 @@ public class Moodle39ExportService : IMoodle39ExportService
                         continue;
                     }
 
+                    // этот кейс чисто выступает маркером того, что мы упустили обработать какое-то состояние
                     valuesToAdd.Add(new QuestionAttemptStep
                     {
                         QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,

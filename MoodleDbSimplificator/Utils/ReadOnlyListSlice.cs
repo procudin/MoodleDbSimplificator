@@ -14,6 +14,13 @@ public class ReadOnlyListSlice<T> : IReadOnlyList<T>
         //    throw new ArgumentException("Invalid startIndex", nameof(startIndex));
         //if (inclusiveEndIndex < 0 || inclusiveEndIndex >= list.Count || inclusiveEndIndex < startIndex)
         //    throw new ArgumentException("Invalid inclusiveEndIndex", nameof(inclusiveEndIndex));
+        startIndex = Math.Min(startIndex, list.Count - 1);
+        startIndex = Math.Max(startIndex, 0);
+        
+        inclusiveEndIndex = Math.Min(inclusiveEndIndex, list.Count - 1);
+        inclusiveEndIndex = Math.Max(inclusiveEndIndex, 0);
+
+        startIndex        = Math.Min(startIndex, inclusiveEndIndex);
         
         _list              = list;
         _startIndex        = startIndex;
