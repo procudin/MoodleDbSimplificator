@@ -8,10 +8,8 @@ public enum QuestionAttemptStepState
     
     // ответ на вопрос
     Answer,
-    //PartialAnswer,
-    //RightAnswer,
-    //WrongAnswer,
-    //InvalidAnswer,
+    RightAnswer,
+    WrongAnswer,
     
     // запросы подсказок
     HintWhatIs,

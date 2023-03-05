@@ -301,12 +301,23 @@ public class Moodle39ExportService : IMoodle39ExportService
                         || attemptStep.State.IsActiveMdlAttemptStemp() && attemptStep.QType is "correctwriting" or "preg" && attemptStep.StateData.Any(x => x.Name is "answer")
                         )
                     {
+                        var fraction = attemptStep.StateData.FirstOrDefault(x => x.Name == "-_rawfraction")?.Value is { } rawFrastionStr && double.TryParse(rawFrastionStr, out var rawFraction)
+                                ? rawFraction
+                                : (double?)null;
+                        var state = fraction switch
+                        {
+                            null => QuestionAttemptStepState.Answer,
+                            1.0d => QuestionAttemptStepState.RightAnswer,
+                            0.0d => QuestionAttemptStepState.WrongAnswer,
+                            _ => throw new ArgumentOutOfRangeException(),
+                        };
+                        
                         valuesToAdd.Add(new QuestionAttemptStep
                         {
                             QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
                             QuestionAttemptId = attemptStep.QuestionAttemptId,
                             Order = attemptStep.Order,
-                            State = QuestionAttemptStepState.Answer,
+                            State = state,
                             /*
                             RawState = attemptStep.State,
                             RawStateData = attemptStep.StateData.Length > 0
