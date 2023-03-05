@@ -41,6 +41,7 @@ public class Moodle39ExportService : IMoodle39ExportService
         await ExportQuestions(cancellationToken);
         await ExportQuizQuestions(cancellationToken);
         await ExportUsers(cancellationToken);
+        await ExportQuizGrades(cancellationToken);
         await ExportQuizAttempts(cancellationToken);
         await ExportQuestionAttempts(cancellationToken);
         await ExportQuestionAttemptSteps(cancellationToken);
@@ -139,6 +140,24 @@ public class Moodle39ExportService : IMoodle39ExportService
         _logger.LogInformation("Exported {} questions", questionsToAdd.Count);
     }
 
+    private async Task ExportQuizGrades(CancellationToken cancellationToken)
+    {
+        var query = 
+            from quizGrade in _moodleDb.MdlQuizGrades.AsNoTracking()
+            join user in _moodleDb.MdlUsers.AsNoTracking() on quizGrade.Userid equals user.Id 
+            join quiz in _moodleDb.MdlQuizzes.AsNoTracking() on quizGrade.Quiz equals quiz.Id
+            select new QuizGrade
+            {
+                QuizId    = quizGrade.Quiz,
+                UserId    = quizGrade.Userid,
+                Grade     = quizGrade.Grade,
+                UpdatedAt = DateTimeOffset.FromUnixTimeSeconds(quizGrade.Timemodified).UtcDateTime,
+            };
+        var gradesToAdd = await query.ToListAsync(cancellationToken: cancellationToken);
+        await _exportDb.BulkInsertAsync(gradesToAdd, cancellationToken: cancellationToken);
+        _logger.LogInformation("Exported {} quiz grades", gradesToAdd.Count);
+    }
+
     private async Task ExportQuizAttempts(CancellationToken cancellationToken)
     {
         var query = 
@@ -230,6 +249,8 @@ public class Moodle39ExportService : IMoodle39ExportService
             var valuesToAdd = new List<QuestionAttemptStep>();
             foreach (var attemptSteps in attemptsWithSteps)
             {
+                int order = 0;
+                
                 foreach (var (attemptStep, nextAttemptSteps) in attemptSteps.WithRest())
                 {
                     // первый стейт всегда 'todo', поэтому его пропускаем
@@ -259,7 +280,7 @@ public class Moodle39ExportService : IMoodle39ExportService
                         {
                             QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
                             QuestionAttemptId = attemptStep.QuestionAttemptId,
-                            Order = attemptStep.Order,
+                            Order = order++,
                             State = state,
                             /*
                             RawState = attemptStep.State,
@@ -280,14 +301,8 @@ public class Moodle39ExportService : IMoodle39ExportService
                         {
                             QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
                             QuestionAttemptId = attemptStep.QuestionAttemptId,
-                            Order = attemptStep.Order,
+                            Order = order++,
                             State = QuestionAttemptStepState.GaveUp,
-                            /*
-                            RawState = attemptStep.State,
-                            RawStateData = attemptStep.StateData.Length > 0
-                                ? attemptStep.StateData.ToDictionary(z => z.Name, z => z.Value)
-                                : null,
-                            */
                             CreatedAt = attemptStep.CreatedAt,
                         });
                         break;
@@ -316,14 +331,8 @@ public class Moodle39ExportService : IMoodle39ExportService
                         {
                             QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
                             QuestionAttemptId = attemptStep.QuestionAttemptId,
-                            Order = attemptStep.Order,
+                            Order = order++,
                             State = state,
-                            /*
-                            RawState = attemptStep.State,
-                            RawStateData = attemptStep.StateData.Length > 0
-                                    ? attemptStep.StateData.ToDictionary(z => z.Name, z => z.Value)
-                                    : null,
-                            */
                             CreatedAt = attemptStep.CreatedAt,
                         });
                         
@@ -347,14 +356,8 @@ public class Moodle39ExportService : IMoodle39ExportService
                         {
                             QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
                             QuestionAttemptId = attemptStep.QuestionAttemptId,
-                            Order = attemptStep.Order,
+                            Order = order++,
                             State = state,
-                            /*
-                            RawState = attemptStep.State,
-                            RawStateData = attemptStep.StateData.Length > 0
-                                    ? attemptStep.StateData.ToDictionary(z => z.Name, z => z.Value)
-                                    : null,
-                                    */
                             CreatedAt = attemptStep.CreatedAt,
                         });
                         continue;
@@ -364,14 +367,8 @@ public class Moodle39ExportService : IMoodle39ExportService
                     {
                         QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
                         QuestionAttemptId = attemptStep.QuestionAttemptId,
-                        Order = attemptStep.Order,
+                        Order = order++,
                         State = QuestionAttemptStepState.Undefined,
-                        /*
-                        RawState = attemptStep.State,
-                        RawStateData = attemptStep.StateData.Length > 0
-                                ? attemptStep.StateData.ToDictionary(z => z.Name, z => z.Value)
-                                : null,
-                        */
                         CreatedAt = attemptStep.CreatedAt,
                     });
                 }

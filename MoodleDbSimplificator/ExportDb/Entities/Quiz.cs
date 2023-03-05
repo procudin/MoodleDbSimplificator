@@ -27,5 +27,7 @@ public class Quiz
     /// </summary>
     public decimal SumGrades { get; set; }
     
+    public IList<QuizGrade>? Grades { get; set; }
+    public IList<QuizAttempt>? Attempts { get; set; }
     public IList<QuizQuestion>? Questions { get; set; }
 }

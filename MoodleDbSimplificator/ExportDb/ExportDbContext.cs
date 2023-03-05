@@ -16,6 +16,7 @@ public class ExportDbContext : DbContext
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Course> Courses { get; set; } = null!;
     public DbSet<Quiz> Quizzes { get; set; } = null!;
+    public DbSet<QuizGrade> QuizGrades { get; set; } = null!;
     public DbSet<QuizQuestion> QuizQuestions { get; set; } = null!;
     public DbSet<QuizAttempt> QuizAttempts { get; set; } = null!;
     public DbSet<Question> Questions { get; set; } = null!;
@@ -68,7 +69,7 @@ public class ExportDbContext : DbContext
         {
             question.HasKey(x => x.QuestionId);
         });
-        
+
         modelBuilder.Entity<QuestionAttempt>(qa =>
         {
             qa.HasKey(x => x.QuestionAttemptId);
@@ -100,6 +101,19 @@ public class ExportDbContext : DbContext
             */
         });
         
+        modelBuilder.Entity<QuizGrade>(qg =>
+        {
+            qg.HasKey(x => new { x.QuizId, x.UserId });
+
+            qg.HasOne(x => x.Quiz)
+                .WithMany(x => x.Grades)
+                .HasForeignKey(x => x.QuizId);
+            
+            qg.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId);
+        });
+        
         modelBuilder.Entity<QuizQuestion>(qq =>
         {
             qq.HasKey(x => new { x.QuizId, x.QuestionId });
@@ -118,7 +132,7 @@ public class ExportDbContext : DbContext
             qa.HasKey(x => x.QuizAttemptId);
 
             qa.HasOne(x => x.Quiz)
-                .WithMany()
+                .WithMany(x => x.Attempts)
                 .HasForeignKey(x => x.QuizId);
             
             qa.HasOne(x => x.User)
