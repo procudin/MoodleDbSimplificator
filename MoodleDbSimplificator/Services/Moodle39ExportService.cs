@@ -6,6 +6,8 @@ using MoodleDbSimplificator.ExportDb.Entities;
 using MoodleDbSimplificator.ExportDb.Entities.Enums;
 using MoodleDbSimplificator.MoodleDb.V39;
 using MoodleDbSimplificator.MoodleDb.V39.Entities;
+using MoodleDbSimplificator.Utils;
+using System.Text.Json;
 
 namespace MoodleDbSimplificator.Services;
 
@@ -201,72 +203,125 @@ public class Moodle39ExportService : IMoodle39ExportService
         foreach (var attemptsChunk in savedAttempsIds.Chunk(10000))
         {
             var query = 
-                from questionAttempt in _moodleDb.MdlQuestionAttempts.AsNoTracking()
-                join questionAttemptStep in _moodleDb.MdlQuestionAttemptSteps.AsNoTracking()
+                from questionAttempt in _moodleDb.MdlQuestionAttempts
+                join question in _moodleDb.MdlQuestions
+                    on questionAttempt.Questionid equals question.Id
+                join questionAttemptStep in _moodleDb.MdlQuestionAttemptSteps
                     on questionAttempt.Id equals questionAttemptStep.Questionattemptid
                 where attemptsChunk.Contains(questionAttempt.Id)
                 select new
                 {
+                    QType                 = question.Qtype,
                     QuestionAttemptStepId = questionAttemptStep.Id,
                     QuestionAttemptId     = questionAttemptStep.Questionattemptid,
                     Order                 = questionAttemptStep.Sequencenumber,
                     State                 = questionAttemptStep.State,
                     StateData             = _moodleDb.MdlQuestionAttemptStepData.AsNoTracking()
                         .Where(z => z.Attemptstepid == questionAttemptStep.Id)
-                        //.Where(z => z.Name.StartsWith("-"))
-                        //.Where(z => z.Name != "answer" && !z.Name.StartsWith("_"))
                         .Select(z => new { z.Name, z.Value })
                         .ToArray(),
                     CreatedAt             = DateTimeOffset.FromUnixTimeSeconds(questionAttemptStep.Timecreated).UtcDateTime,
                 };
             var attemptsWithSteps = (await query.ToListAsync(cancellationToken: cancellationToken))
                 .GroupBy(x => x.QuestionAttemptId)
-                .Select(x => (
-                    AttemptId: x.Key,
-                    Steps: x.OrderBy(z => z.Order).ToList()
-                ))
+                .Select(x => x.OrderBy(z => z.Order).ToList())
                 .ToList();
 
             var valuesToAdd = new List<QuestionAttemptStep>();
-            foreach (var (_, attemptSteps) in attemptsWithSteps)
+            foreach (var attemptSteps in attemptsWithSteps)
             {
-                foreach (var attemptStep in attemptSteps)
+                foreach (var (attemptStep, nextAttemptSteps) in attemptSteps.WithRest())
                 {
-                    if (attemptStep.Order == 0)
-                    {
-                        // первый стейт всегда 'todo', поэтому его пропускаем
+                    // первый стейт всегда 'todo', поэтому его пропускаем
+                    // такэе пропускаем все отрицательные действия
+                    if (attemptStep.Order <= 0)
                         continue;
-                    }
+                    
+                    // особый странный кейс, который нужно пропуситить
+                    if (attemptStep.State == "invalid")
+                        continue;
 
-                    if (attemptStep.StateData.Any(x => x.Name == "-submit" && x.Value == "1"))
+                    if (attemptStep.State is "mangrright" or "mangrwrong" or "mangrpartial")
+                        continue;
+                    if (attemptStep.State is "gradedright" or "gradedwrong" or "gradedpartial")
                     {
-                        // дан ответ, смотрим по стейту какой он
                         var state = attemptStep.State switch
                         {
-                            "todo" => QuestionAttemptStepState.IncorrectAnswer,
-                            "complete" => QuestionAttemptStepState.CorrectAnswer,
-                            _ => QuestionAttemptStepState.Undefined,
+                            _ when nextAttemptSteps.Any(x => x.State == "mangrright") => QuestionAttemptStepState.GradedRight,
+                            _ when nextAttemptSteps.Any(x => x.State == "mangrwrong") => QuestionAttemptStepState.GradedWrong,
+                            _ when nextAttemptSteps.Any(x => x.State == "mangrpartial") => QuestionAttemptStepState.GradedPartial,
+                            "gradedright" => QuestionAttemptStepState.GradedRight,
+                            "gradedwrong" => QuestionAttemptStepState.GradedWrong,
+                            "gradedpartial" => QuestionAttemptStepState.GradedPartial,
+                            _ => throw new ArgumentOutOfRangeException(),
                         };
-
                         valuesToAdd.Add(new QuestionAttemptStep
                         {
                             QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
                             QuestionAttemptId = attemptStep.QuestionAttemptId,
                             Order = attemptStep.Order,
                             State = state,
+                            /*
+                            RawState = attemptStep.State,
+                            RawStateData = attemptStep.StateData.Length > 0
+                                ? attemptStep.StateData.ToDictionary(z => z.Name, z => z.Value)
+                                : null,
+                            */
+                            CreatedAt = attemptStep.CreatedAt,
+                        });
+                        
+                        continue;
+                    }
+                    
+                    // gaveup добавялем если нашли пустой ответ или состояние gaveup
+                    if (attemptStep.State is "gaveup" || attemptStep.StateData.Any(x => x.Name == "answer" && string.IsNullOrEmpty(x.Value)))
+                    {
+                        valuesToAdd.Add(new QuestionAttemptStep
+                        {
+                            QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
+                            QuestionAttemptId = attemptStep.QuestionAttemptId,
+                            Order = attemptStep.Order,
+                            State = QuestionAttemptStepState.GaveUp,
+                            /*
+                            RawState = attemptStep.State,
+                            RawStateData = attemptStep.StateData.Length > 0
+                                ? attemptStep.StateData.ToDictionary(z => z.Name, z => z.Value)
+                                : null,
+                            */
+                            CreatedAt = attemptStep.CreatedAt,
+                        });
+                        break;
+                    }
+
+                    // дан ответ
+                    if (attemptStep.State.IsActiveMdlAttemptStemp() && attemptStep.StateData.Any(x => x.Name is "-submit" && x.Value == "1") && attemptStep.StateData.Any(x => x.Name is "-_try")
+                        || attemptStep.State.IsActiveMdlAttemptStemp() && attemptStep.StateData is [{ Name: "answer"}]
+                        || attemptStep.State.IsActiveMdlAttemptStemp() && attemptStep.QType is "match" or "multianswer" && attemptStep.StateData.All(x => x.Name.StartsWith("sub"))
+                        || attemptStep.State.IsActiveMdlAttemptStemp() && attemptStep.QType is "multichoice" && attemptStep.StateData.All(x => x.Name.StartsWith("choice"))
+                        || attemptStep.State.IsActiveMdlAttemptStemp() && attemptStep.QType is "correctwriting" or "preg" && attemptStep.StateData.Any(x => x.Name is "answer")
+                        )
+                    {
+                        valuesToAdd.Add(new QuestionAttemptStep
+                        {
+                            QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
+                            QuestionAttemptId = attemptStep.QuestionAttemptId,
+                            Order = attemptStep.Order,
+                            State = QuestionAttemptStepState.Answer,
+                            /*
                             RawState = attemptStep.State,
                             RawStateData = attemptStep.StateData.Length > 0
                                     ? attemptStep.StateData.ToDictionary(z => z.Name, z => z.Value)
                                     : null,
+                            */
                             CreatedAt = attemptStep.CreatedAt,
                         });
+                        
                         continue;
                     }
                     
-                    
+                    // использована подсказка
                     if (attemptStep.StateData.Any(x => x.Name == "-_hashint" && x.Value == "1"))
                     {
-                        // данана посказка
                         var state = true switch
                         {
                             _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-wherepic_") && x.Value == "1") => QuestionAttemptStepState.HintWherePic,
@@ -274,7 +329,7 @@ public class Moodle39ExportService : IMoodle39ExportService
                             _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-wheretxt_") && x.Value == "1") => QuestionAttemptStepState.HintWhereText,
                             _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-hintnextlexembtn") && x.Value == "1") => QuestionAttemptStepState.HintNextLexem,
                             _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-hintnextcharbtn") && x.Value == "1") => QuestionAttemptStepState.HintNextChar,
-                            _ => QuestionAttemptStepState.Undefined,
+                            _ => throw new InvalidOperationException($"Wtf??? - {JsonSerializer.Serialize(attemptStep)}"),
                         };
 
                         valuesToAdd.Add(new QuestionAttemptStep
@@ -283,10 +338,12 @@ public class Moodle39ExportService : IMoodle39ExportService
                             QuestionAttemptId = attemptStep.QuestionAttemptId,
                             Order = attemptStep.Order,
                             State = state,
+                            /*
                             RawState = attemptStep.State,
                             RawStateData = attemptStep.StateData.Length > 0
                                     ? attemptStep.StateData.ToDictionary(z => z.Name, z => z.Value)
                                     : null,
+                                    */
                             CreatedAt = attemptStep.CreatedAt,
                         });
                         continue;
@@ -298,10 +355,12 @@ public class Moodle39ExportService : IMoodle39ExportService
                         QuestionAttemptId = attemptStep.QuestionAttemptId,
                         Order = attemptStep.Order,
                         State = QuestionAttemptStepState.Undefined,
+                        /*
                         RawState = attemptStep.State,
                         RawStateData = attemptStep.StateData.Length > 0
                                 ? attemptStep.StateData.ToDictionary(z => z.Name, z => z.Value)
                                 : null,
+                        */
                         CreatedAt = attemptStep.CreatedAt,
                     });
                 }
@@ -311,6 +370,21 @@ public class Moodle39ExportService : IMoodle39ExportService
             loadedCount += attemptsChunk.Length;
             _logger.LogInformation("Exported {}/{} question attempt steps", loadedCount, savedAttempsIds.Count);
         }
+        
+        
+        // валидация на отсутвие состояния Undefined
+        var undefinedStatements = await _exportDb.QuestionAttemptSteps.AsNoTracking()
+            .Where(x => x.State == QuestionAttemptStepState.Undefined)
+            .ToListAsync(cancellationToken: cancellationToken);
+        foreach (var undefinedStatement in undefinedStatements)
+        {
+            _logger.LogWarning("Undefined attempt step: {}", JsonSerializer.Serialize(undefinedStatement));
+        }
+        /*
+        await _exportDb.QuestionAttemptSteps
+            .Where(x => x.State == QuestionAttemptStepState.Undefined)
+            .ExecuteDeleteAsync(cancellationToken: cancellationToken);
+        */
     }
 }
 
@@ -327,4 +401,18 @@ public static class Extensions
             offset += chunk.Count;
         } while (chunk.Count == chunkSize);
     }
+
+    public static IEnumerable<ValueTuple<T, T?>> WithNextElem<T>(this IList<T> source) 
+        where T : class
+    {
+        return source.Select((x, i) => ValueTuple.Create(x, i < source.Count - 1 ? source[i + 1] : null));
+    }
+    
+    public static IEnumerable<ValueTuple<T, IReadOnlyList<T>>> WithRest<T>(this IReadOnlyList<T> source) 
+        where T : class
+    {
+        return source.Select((x, i) => ValueTuple.Create(x, (IReadOnlyList<T>)new ReadOnlyListSlice<T>(source, i + 1)));
+    }
+
+    public static bool IsActiveMdlAttemptStemp(this string s) => s is "todo" or "invalid" or "complete";
 }

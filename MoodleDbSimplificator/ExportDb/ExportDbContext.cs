@@ -38,6 +38,9 @@ public class ExportDbContext : DbContext
         configurationBuilder
             .Properties<QuizAttemptState>()
             .HaveConversion<string>();
+        configurationBuilder
+            .Properties<QuestionAttemptStepState>()
+            .HaveConversion<string>();
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -86,13 +89,15 @@ public class ExportDbContext : DbContext
             qas.HasOne(x => x.QuestionAttempt)
                 .WithMany(x => x.Steps)
                 .HasForeignKey(x => x.QuestionAttemptId);
-
+            
+            /*
             qas.Property(x => x.RawStateData)
                 .HasColumnType("json");
             qas.Property(x => x.RawStateData)
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
                     v => JsonSerializer.Deserialize<Dictionary<string, string>>(v, JsonSerializerOptions.Default));
+            */
         });
         
         modelBuilder.Entity<QuizQuestion>(qq =>

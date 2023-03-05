@@ -6,14 +6,25 @@ public enum QuestionAttemptStepState
 {
     Undefined,
     
-    CorrectAnswer,
-    IncorrectAnswer,
+    // ответ на вопрос
+    Answer,
+    //PartialAnswer,
+    //RightAnswer,
+    //WrongAnswer,
+    //InvalidAnswer,
     
+    // запросы подсказок
     HintWhatIs,
     HintWherePic,
     HintWhereText,
     HintNextLexem,
     HintNextChar,
+    
+    // оценка попытки
+    GaveUp,
+    GradedRight,
+    GradedWrong,
+    GradedPartial,
 }
 
 
@@ -28,7 +39,7 @@ public class QuestionAttemptStep
     
     public QuestionAttemptStepState State { get; set; }
     
-    public string RawState { get; set; } = null!;
-    public Dictionary<string, string>? RawStateData { get; set; }
+    //public string RawState { get; set; } = null!;
+    //public Dictionary<string, string>? RawStateData { get; set; }
     public DateTime CreatedAt { get; set; }
 }
