@@ -343,8 +343,8 @@ public class Moodle39ExportService : IMoodle39ExportService
                     {
                         // пытаемся опредить правильность ответа
                         var fraction = attemptStep.StateData.FirstOrDefault(x => x.Name == "-_rawfraction")?.Value is { } rawFrastionStr 
-                                       && decimal.TryParse(rawFrastionStr, CultureInfo.InvariantCulture, out var rawFraction)
-                                ? rawFraction
+                                       && double.TryParse(rawFrastionStr, CultureInfo.InvariantCulture, out var rawFraction)
+                                ? (decimal)rawFraction
                                 : (decimal?)null;
                         var state = fraction switch
                         {
@@ -358,9 +358,9 @@ public class Moodle39ExportService : IMoodle39ExportService
                         if (state == QuestionAttemptStepState.Answer && nextAttemptSteps.FirstOrDefault() is { State: "gaveup" })
                             continue;
                         
-                        // еще один кейс для preg - генерируется какой-то пустой ответ на шаге 1 для адаптивных попыток
-                        if (attemptStep.QType == "preg" && attemptStep.QBeh.StartsWith("adaptive") && attemptStep.Order == 1 
-                            && attemptStep.StateData.Any(sd => sd.Name == "answer" && string.IsNullOrEmpty(sd.Value))
+                        // еще один особый кейс для preg и cw - генерируется какой-то странный неоцениваемый ответ на шаге 1 для адаптивных попыток
+                        if (attemptStep.QType is "preg" or "correctwriting" && attemptStep.QBeh.StartsWith("adaptive") && attemptStep.Order == 1 
+                            && attemptStep.StateData.Any(sd => sd.Name == "answer")
                             && nextAttemptSteps.Any(x => x.StateData.Any(sd => sd.Name == "answer" && !string.IsNullOrEmpty(sd.Value))))
                             continue;
                         
