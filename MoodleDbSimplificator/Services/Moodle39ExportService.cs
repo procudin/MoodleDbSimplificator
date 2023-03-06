@@ -231,6 +231,7 @@ public class Moodle39ExportService : IMoodle39ExportService
                 select new
                 {
                     QType                 = question.Qtype,
+                    QBeh                  = questionAttempt.Behaviour,
                     QuestionAttemptStepId = questionAttemptStep.Id,
                     QuestionAttemptId     = questionAttemptStep.Questionattemptid,
                     Order                 = questionAttemptStep.Sequencenumber,
@@ -301,6 +302,30 @@ public class Moodle39ExportService : IMoodle39ExportService
                         });
                         continue;
                     }
+                    
+                    // использована подсказка
+                    if (attemptStep.StateData.Any(x => x.Name == "-_hashint" && x.Value == "1"))
+                    {
+                        var state = true switch
+                        {
+                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-wherepic_") && x.Value == "1") => QuestionAttemptStepState.HintWherePic,
+                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-whatis_") && x.Value == "1") => QuestionAttemptStepState.HintWhatIs,
+                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-wheretxt_") && x.Value == "1") => QuestionAttemptStepState.HintWhereText,
+                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-hintnextlexembtn") && x.Value == "1") => QuestionAttemptStepState.HintNextLexem,
+                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-hintnextcharbtn") && x.Value == "1") => QuestionAttemptStepState.HintNextChar,
+                            _ => throw new InvalidOperationException($"Wtf??? - {JsonSerializer.Serialize(attemptStep)}"),
+                        };
+
+                        valuesToAdd.Add(new QuestionAttemptStep
+                        {
+                            QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
+                            QuestionAttemptId = attemptStep.QuestionAttemptId,
+                            Order = order++,
+                            State = state,
+                            CreatedAt = attemptStep.CreatedAt,
+                        });
+                        continue;
+                    }
 
                     // дан ответ
                     // не уверен, что тут учел все случаи. Конкретно тут учтены следующие:
@@ -333,31 +358,12 @@ public class Moodle39ExportService : IMoodle39ExportService
                         if (state == QuestionAttemptStepState.Answer && nextAttemptSteps.FirstOrDefault() is { State: "gaveup" })
                             continue;
                         
-                        valuesToAdd.Add(new QuestionAttemptStep
-                        {
-                            QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
-                            QuestionAttemptId = attemptStep.QuestionAttemptId,
-                            Order = order++,
-                            State = state,
-                            CreatedAt = attemptStep.CreatedAt,
-                        });
+                        // еще один кейс для preg - генерируется какой-то пустой ответ на шаге 1 для адаптивных попыток
+                        if (attemptStep.QType == "preg" && attemptStep.QBeh.StartsWith("adaptive") && attemptStep.Order == 1 
+                            && attemptStep.StateData.Any(sd => sd.Name == "answer" && string.IsNullOrEmpty(sd.Value))
+                            && nextAttemptSteps.Any(x => x.StateData.Any(sd => sd.Name == "answer" && !string.IsNullOrEmpty(sd.Value))))
+                            continue;
                         
-                        continue;
-                    }
-                    
-                    // использована подсказка
-                    if (attemptStep.StateData.Any(x => x.Name == "-_hashint" && x.Value == "1"))
-                    {
-                        var state = true switch
-                        {
-                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-wherepic_") && x.Value == "1") => QuestionAttemptStepState.HintWherePic,
-                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-whatis_") && x.Value == "1") => QuestionAttemptStepState.HintWhatIs,
-                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-wheretxt_") && x.Value == "1") => QuestionAttemptStepState.HintWhereText,
-                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-hintnextlexembtn") && x.Value == "1") => QuestionAttemptStepState.HintNextLexem,
-                            _ when attemptStep.StateData.Any(x => x.Name.StartsWith("-hintnextcharbtn") && x.Value == "1") => QuestionAttemptStepState.HintNextChar,
-                            _ => throw new InvalidOperationException($"Wtf??? - {JsonSerializer.Serialize(attemptStep)}"),
-                        };
-
                         valuesToAdd.Add(new QuestionAttemptStep
                         {
                             QuestionAttemptStepId = attemptStep.QuestionAttemptStepId,
