@@ -6,6 +6,9 @@ using Microsoft.Extensions.Logging;
 using MoodleDbSimplificator.ExportDb;
 using MoodleDbSimplificator.MoodleDb.V39;
 using MoodleDbSimplificator.Services;
+using MoodleDbSimplificator.Utils;
+using System.Text;
+using System.Text.Json;
 
 namespace MoodleDbSimplificator;
 
@@ -16,6 +19,7 @@ public class Program
 
     public static async Task<int> Main(string[] args)
     {
+        Console.OutputEncoding = Encoding.UTF8;
         _host = CreateHostBuilder(args).Build();
         _logger = _host.Services.GetRequiredService<ILoggerFactory>().CreateLogger<Program>();
 

@@ -1,4 +1,5 @@
 ﻿using EFCore.BulkExtensions;
+using FuzzySharp;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using MoodleDbSimplificator.ExportDb;
@@ -18,7 +19,7 @@ public interface IMoodle39ExportService
 
 public class Moodle39ExportService : IMoodle39ExportService
 {
-    private const int PageSize = 30000;
+    private const int PAGE_SIZE = 30000;
     private readonly ExportDbContext _exportDb;
     private readonly Moodle39DbContext _moodleDb;
     private readonly ILogger<Moodle39ExportService> _logger;
@@ -45,16 +46,18 @@ public class Moodle39ExportService : IMoodle39ExportService
         await ExportQuizAttempts(cancellationToken);
         await ExportQuestionAttempts(cancellationToken);
         await ExportQuestionAttemptSteps(cancellationToken);
+        //await ExportExamGrades(cancellationToken);
     }
 
     private async Task ExportUsers(CancellationToken cancellationToken)
     {
-        var usersToAdd = await _moodleDb.MdlUsers.AsNoTracking()
-            .Select(mdlUser => 
+        var usersToAdd = await _moodleDb.MdlUsers
+            .Select(mdlUser =>
                 new User
                 {
                     UserId = mdlUser.Id,
                     Username = mdlUser.Username,
+                    FullName = mdlUser.Lastname + " " + mdlUser.Firstname,
                     Sex = null,
                     Country = mdlUser.Country,
                     Lang = mdlUser.Lang,
@@ -68,7 +71,7 @@ public class Moodle39ExportService : IMoodle39ExportService
     
     private async Task ExportCources(CancellationToken cancellationToken)
     {
-        var courcesToAdd = await _moodleDb.MdlCourses.AsNoTracking()
+        var courcesToAdd = await _moodleDb.MdlCourses
             .Select(cource => 
                 new Course
                 {
@@ -86,7 +89,7 @@ public class Moodle39ExportService : IMoodle39ExportService
 
     private async Task ExportQuizzes(CancellationToken cancellationToken)
     {
-        var quizzesToAdd = await _moodleDb.MdlQuizzes.AsNoTracking()
+        var quizzesToAdd = await _moodleDb.MdlQuizzes
             .Select(q => new Quiz
             {
                 QuizId      = q.Id,
@@ -106,7 +109,7 @@ public class Moodle39ExportService : IMoodle39ExportService
     
     private async Task ExportQuizQuestions(CancellationToken cancellationToken)
     {
-        var qqToAdd = await _moodleDb.MdlQuizSlots.AsNoTracking()
+        var qqToAdd = await _moodleDb.MdlQuizSlots
             .Select(q => new QuizQuestion
             {
                 QuizId          = q.Quizid,
@@ -118,12 +121,12 @@ public class Moodle39ExportService : IMoodle39ExportService
         await _exportDb.BulkInsertAsync(qqToAdd, cancellationToken: cancellationToken);
         _logger.LogInformation("Exported {} quiz-questions", qqToAdd.Count);
     }
-    
+
     private async Task ExportQuestions(CancellationToken cancellationToken)
     {
-        var query = 
-            from q in _moodleDb.MdlQuestions.AsNoTracking()
-            join qc in _moodleDb.MdlQuestionCategories.AsNoTracking()
+        var query =
+            from q in _moodleDb.MdlQuestions
+            join qc in _moodleDb.MdlQuestionCategories
                 on q.Category equals qc.Id
             select new Question
             {
@@ -142,10 +145,10 @@ public class Moodle39ExportService : IMoodle39ExportService
 
     private async Task ExportQuizGrades(CancellationToken cancellationToken)
     {
-        var query = 
-            from quizGrade in _moodleDb.MdlQuizGrades.AsNoTracking()
-            join user in _moodleDb.MdlUsers.AsNoTracking() on quizGrade.Userid equals user.Id 
-            join quiz in _moodleDb.MdlQuizzes.AsNoTracking() on quizGrade.Quiz equals quiz.Id
+        var query =
+            from quizGrade in _moodleDb.MdlQuizGrades
+            join user in _moodleDb.MdlUsers on quizGrade.Userid equals user.Id
+            join quiz in _moodleDb.MdlQuizzes on quizGrade.Quiz equals quiz.Id
             select new QuizGrade
             {
                 QuizId    = quizGrade.Quiz,
@@ -160,11 +163,11 @@ public class Moodle39ExportService : IMoodle39ExportService
 
     private async Task ExportQuizAttempts(CancellationToken cancellationToken)
     {
-        var query = 
-            from quizAttempt in _moodleDb.MdlQuizAttempts.AsNoTracking()
-                orderby quizAttempt.Quiz, quizAttempt.Userid, quizAttempt.Attempt
-            join user in _moodleDb.MdlUsers.AsNoTracking() on quizAttempt.Userid equals user.Id 
-            join quiz in _moodleDb.MdlQuizzes.AsNoTracking() on quizAttempt.Quiz equals quiz.Id
+        var query =
+            from quizAttempt in _moodleDb.MdlQuizAttempts
+            orderby quizAttempt.Quiz, quizAttempt.Userid, quizAttempt.Attempt
+            join user in _moodleDb.MdlUsers on quizAttempt.Userid equals user.Id
+            join quiz in _moodleDb.MdlQuizzes on quizAttempt.Quiz equals quiz.Id
             select new QuizAttempt
             {
                 QuizAttemptId = quizAttempt.Id,
@@ -184,13 +187,13 @@ public class Moodle39ExportService : IMoodle39ExportService
     private async Task ExportQuestionAttempts(CancellationToken cancellationToken)
     {
         var query =
-            from quizAttempt in _moodleDb.MdlQuizAttempts.AsNoTracking()
-            join questionUsage in _moodleDb.MdlQuestionUsages.AsNoTracking()
+            from quizAttempt in _moodleDb.MdlQuizAttempts
+            join questionUsage in _moodleDb.MdlQuestionUsages
                 on quizAttempt.Uniqueid equals questionUsage.Id
-            join questionAttempt in _moodleDb.MdlQuestionAttempts.AsNoTracking()
+            join questionAttempt in _moodleDb.MdlQuestionAttempts
                 on questionUsage.Id equals questionAttempt.Questionusageid
-            join user in _moodleDb.MdlUsers.AsNoTracking() on quizAttempt.Userid equals user.Id 
-            join quiz in _moodleDb.MdlQuizzes.AsNoTracking() on quizAttempt.Quiz equals quiz.Id
+            join user in _moodleDb.MdlUsers on quizAttempt.Userid equals user.Id
+            join quiz in _moodleDb.MdlQuizzes on quizAttempt.Quiz equals quiz.Id
             orderby questionAttempt.Id
             select new QuestionAttempt
             {
@@ -203,7 +206,7 @@ public class Moodle39ExportService : IMoodle39ExportService
         
         var totalCount = await query.CountAsync(cancellationToken: cancellationToken);
         var loadedCount = 0;
-        await foreach (var attemptChunk in query.AsChunkedAsyncEnumerable(PageSize).WithCancellation(cancellationToken))
+        await foreach (var attemptChunk in query.AsChunkedAsyncEnumerable(PAGE_SIZE).WithCancellation(cancellationToken))
         {
             await _exportDb.BulkInsertAsync(attemptChunk, cancellationToken: cancellationToken);
             loadedCount += attemptChunk.Count;
@@ -236,7 +239,7 @@ public class Moodle39ExportService : IMoodle39ExportService
                     QuestionAttemptId     = questionAttemptStep.Questionattemptid,
                     Order                 = questionAttemptStep.Sequencenumber,
                     State                 = questionAttemptStep.State,
-                    StateData             = _moodleDb.MdlQuestionAttemptStepData.AsNoTracking()
+                    StateData             = _moodleDb.MdlQuestionAttemptStepData
                         .Where(z => z.Attemptstepid == questionAttemptStep.Id)
                         .Select(z => new { z.Name, z.Value })
                         .ToArray(),
@@ -407,6 +410,161 @@ public class Moodle39ExportService : IMoodle39ExportService
             .ExecuteDeleteAsync(cancellationToken: cancellationToken);
         */
     }
+
+    private async Task ExportExamGrades(CancellationToken cancellationToken)
+    {
+        var examData = Parsers.ParseCsvWithTotalTable(@"C:\Users\Administrator\Downloads\full_table.csv")
+            .GroupBy(x => x.FullName.Split(' ').First().Replace('ё', 'е').Trim())
+            .ToDictionary(x => x.Key, x => x.ToList(), new FirstWordComparer());
+        var exportedUsers = await _exportDb.Users
+            .Select(x => new { x.UserId, x.FullName })
+            .ToListAsync(cancellationToken: cancellationToken);
+
+        var dataToAdd = new List<ExamGrade>();
+        foreach (var user in exportedUsers)
+        {
+            var examUserData = examData.GetValueOrDefault(user.FullName);
+            if (examUserData is null or { Count: 0 })
+                continue;
+
+            if (examUserData.Count > 1)
+            {
+                
+            }
+
+            dataToAdd.Add(new ExamGrade
+            {
+                UserId = user.UserId,
+                RawNormalizedGrade = 0,
+            });
+        }
+    }
+}
+
+
+/// <summary>
+/// Компаратор, сравнивающий строки только по первому слову
+/// </summary>
+public class FirstWordComparer : IEqualityComparer<string>
+{
+    public bool Equals(string? x, string? y)
+    {
+        if (x == null && y == null)
+            return true;
+        if (x == null || y == null)
+            return false;
+
+        // сначала проверям по совпадении с фамилией, которая идет первой
+        var xSpan = x.IndexOf(' ') is var xIdx && xIdx != -1
+            ? x.AsSpan(0, xIdx)
+            : x.AsSpan();
+        var ySpan = y.IndexOf(' ') is var yIdx && yIdx != -1
+            ? y.AsSpan(0, yIdx)
+            : y.AsSpan();
+        if (xSpan.Length != ySpan.Length)
+            return false;
+        for(var i = 0; i < xSpan.Length; ++i)
+        {
+            var (xi, yi) = (xSpan[i], ySpan[i]);
+            
+            if (xi != yi && !(xi is 'е' or 'ё' && yi is 'е' or 'ё'))
+                return false;
+        }
+        
+        return true;
+    }
+    
+    public int GetHashCode(string obj)
+    {
+        // расчитываем хэш чисто по фамилии, игнорируем букву 'ё'
+        var span = obj.IndexOf(' ') is var xIdx && xIdx != -1
+            ? obj.AsSpan(0, xIdx)
+            : obj.AsSpan();
+        unchecked
+        {
+            int hash1 = 5381;
+            int hash2 = hash1;
+
+            for (int i = 0; i < span.Length && span[i] != '\0'; i += 2)
+            {
+                var spani = char.ToLower(span[i]);
+                if (spani == 'ё')
+                    spani = 'е';
+                
+                hash1 = ((hash1 << 5) + hash1) ^ spani;
+                if (i == span.Length - 1 || span[i + 1] == '\0')
+                    break;
+                var spani1 = char.ToLower(span[i + 1]);
+                if (spani1 == 'ё')
+                    spani1 = 'е';
+                hash2 = ((hash2 << 5) + hash2) ^ spani1;
+            }
+
+            return hash1 + (hash2 * 1566083941);
+        }
+    }
+    
+}
+
+public class FuzzyFullNameComparer : IEqualityComparer<string>
+{
+    public bool Equals(string? x, string? y)
+    {
+        if (x == null && y == null)
+            return true;
+        if (x == null || y == null)
+            return false;
+
+        // сначала проверям по совпадении с фамилией, которая идет первой
+        var xSpan = x.IndexOf(' ') is var xIdx && xIdx != -1
+            ? x.AsSpan(0, xIdx)
+            : x.AsSpan();
+        var ySpan = y.IndexOf(' ') is var yIdx && yIdx != -1
+            ? y.AsSpan(0, yIdx)
+            : y.AsSpan();
+        if (xSpan.Length != ySpan.Length)
+            return false;
+        for(var i = 0; i < xSpan.Length; ++i)
+        {
+            var (xi, yi) = (xSpan[i], ySpan[i]);
+            
+            if (xi != yi && !(xi is 'е' or 'ё' && yi is 'е' or 'ё'))
+                return false;
+        }
+        
+        // фамилии совпали = проверяем по нечеткому сравнению
+        return Fuzz.PartialRatio(x, y) > 97;
+    }
+
+    public int GetHashCode(string obj)
+    {
+        // расчитываем хэш чисто по фамилии, игнорируем букву 'ё'
+        var span = obj.IndexOf(' ') is var xIdx && xIdx != -1
+            ? obj.AsSpan(0, xIdx)
+            : obj.AsSpan();
+        unchecked
+        {
+            int hash1 = 5381;
+            int hash2 = hash1;
+
+            for (int i = 0; i < span.Length && span[i] != '\0'; i += 2)
+            {
+                var spani = char.ToLower(span[i]);
+                if (spani == 'ё')
+                    spani = 'е';
+                
+                hash1 = ((hash1 << 5) + hash1) ^ spani;
+                if (i == span.Length - 1 || span[i + 1] == '\0')
+                    break;
+                var spani1 = char.ToLower(span[i + 1]);
+                if (spani1 == 'ё')
+                    spani1 = 'е';
+                hash2 = ((hash2 << 5) + hash2) ^ spani1;
+            }
+
+            return hash1 + (hash2 * 1566083941);
+        }
+    }
 }
 
 public static class Extensions
@@ -423,13 +581,13 @@ public static class Extensions
         } while (chunk.Count == chunkSize);
     }
 
-    public static IEnumerable<ValueTuple<T, T?>> WithNextElem<T>(this IList<T> source) 
+    public static IEnumerable<ValueTuple<T, T?>> WithNextElem<T>(this IList<T> source)
         where T : class
     {
         return source.Select((x, i) => ValueTuple.Create(x, i < source.Count - 1 ? source[i + 1] : null));
     }
-    
-    public static IEnumerable<ValueTuple<T, IReadOnlyList<T>>> WithRest<T>(this IReadOnlyList<T> source) 
+
+    public static IEnumerable<ValueTuple<T, IReadOnlyList<T>>> WithRest<T>(this IReadOnlyList<T> source)
         where T : class
     {
         return source.Select((x, i) => ValueTuple.Create(x, (IReadOnlyList<T>)new ReadOnlyListSlice<T>(source, i + 1)));
