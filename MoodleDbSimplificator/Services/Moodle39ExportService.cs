@@ -9,6 +9,7 @@ using MoodleDbSimplificator.MoodleDb.V39;
 using MoodleDbSimplificator.Utils;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace MoodleDbSimplificator.Services;
 
@@ -437,132 +438,6 @@ public class Moodle39ExportService : IMoodle39ExportService
                 UserId = user.UserId,
                 RawNormalizedGrade = 0,
             });
-        }
-    }
-}
-
-
-/// <summary>
-/// Компаратор, сравнивающий строки только по первому слову
-/// </summary>
-public class FirstWordComparer : IEqualityComparer<string>
-{
-    public bool Equals(string? x, string? y)
-    {
-        if (x == null && y == null)
-            return true;
-        if (x == null || y == null)
-            return false;
-
-        // сначала проверям по совпадении с фамилией, которая идет первой
-        var xSpan = x.IndexOf(' ') is var xIdx && xIdx != -1
-            ? x.AsSpan(0, xIdx)
-            : x.AsSpan();
-        var ySpan = y.IndexOf(' ') is var yIdx && yIdx != -1
-            ? y.AsSpan(0, yIdx)
-            : y.AsSpan();
-        if (xSpan.Length != ySpan.Length)
-            return false;
-        for(var i = 0; i < xSpan.Length; ++i)
-        {
-            var (xi, yi) = (xSpan[i], ySpan[i]);
-            
-            if (xi != yi && !(xi is 'е' or 'ё' && yi is 'е' or 'ё'))
-                return false;
-        }
-        
-        return true;
-    }
-    
-    public int GetHashCode(string obj)
-    {
-        // расчитываем хэш чисто по фамилии, игнорируем букву 'ё'
-        var span = obj.IndexOf(' ') is var xIdx && xIdx != -1
-            ? obj.AsSpan(0, xIdx)
-            : obj.AsSpan();
-        unchecked
-        {
-            int hash1 = 5381;
-            int hash2 = hash1;
-
-            for (int i = 0; i < span.Length && span[i] != '\0'; i += 2)
-            {
-                var spani = char.ToLower(span[i]);
-                if (spani == 'ё')
-                    spani = 'е';
-                
-                hash1 = ((hash1 << 5) + hash1) ^ spani;
-                if (i == span.Length - 1 || span[i + 1] == '\0')
-                    break;
-                var spani1 = char.ToLower(span[i + 1]);
-                if (spani1 == 'ё')
-                    spani1 = 'е';
-                hash2 = ((hash2 << 5) + hash2) ^ spani1;
-            }
-
-            return hash1 + (hash2 * 1566083941);
-        }
-    }
-    
-}
-
-public class FuzzyFullNameComparer : IEqualityComparer<string>
-{
-    public bool Equals(string? x, string? y)
-    {
-        if (x == null && y == null)
-            return true;
-        if (x == null || y == null)
-            return false;
-
-        // сначала проверям по совпадении с фамилией, которая идет первой
-        var xSpan = x.IndexOf(' ') is var xIdx && xIdx != -1
-            ? x.AsSpan(0, xIdx)
-            : x.AsSpan();
-        var ySpan = y.IndexOf(' ') is var yIdx && yIdx != -1
-            ? y.AsSpan(0, yIdx)
-            : y.AsSpan();
-        if (xSpan.Length != ySpan.Length)
-            return false;
-        for(var i = 0; i < xSpan.Length; ++i)
-        {
-            var (xi, yi) = (xSpan[i], ySpan[i]);
-            
-            if (xi != yi && !(xi is 'е' or 'ё' && yi is 'е' or 'ё'))
-                return false;
-        }
-        
-        // фамилии совпали = проверяем по нечеткому сравнению
-        return Fuzz.PartialRatio(x, y) > 97;
-    }
-
-    public int GetHashCode(string obj)
-    {
-        // расчитываем хэш чисто по фамилии, игнорируем букву 'ё'
-        var span = obj.IndexOf(' ') is var xIdx && xIdx != -1
-            ? obj.AsSpan(0, xIdx)
-            : obj.AsSpan();
-        unchecked
-        {
-            int hash1 = 5381;
-            int hash2 = hash1;
-
-            for (int i = 0; i < span.Length && span[i] != '\0'; i += 2)
-            {
-                var spani = char.ToLower(span[i]);
-                if (spani == 'ё')
-                    spani = 'е';
-                
-                hash1 = ((hash1 << 5) + hash1) ^ spani;
-                if (i == span.Length - 1 || span[i + 1] == '\0')
-                    break;
-                var spani1 = char.ToLower(span[i + 1]);
-                if (spani1 == 'ё')
-                    spani1 = 'е';
-                hash2 = ((hash2 << 5) + hash2) ^ spani1;
-            }
-
-            return hash1 + (hash2 * 1566083941);
         }
     }
 }
