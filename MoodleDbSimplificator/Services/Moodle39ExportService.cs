@@ -60,10 +60,6 @@ public class Moodle39ExportService : IMoodle39ExportService
                     Username = mdlUser.Username,
                     FullName = mdlUser.Lastname + " " + mdlUser.Firstname,
                     Sex = null,
-                    Country = mdlUser.Country,
-                    Lang = mdlUser.Lang,
-                    Firstaccess = DateTimeOffset.FromUnixTimeSeconds(mdlUser.Firstaccess).UtcDateTime,
-                    Lastaccess = DateTimeOffset.FromUnixTimeSeconds(mdlUser.Lastaccess).UtcDateTime,
                 })
             .ToListAsync(cancellationToken: cancellationToken);
         await _exportDb.BulkInsertAsync(usersToAdd, cancellationToken: cancellationToken);

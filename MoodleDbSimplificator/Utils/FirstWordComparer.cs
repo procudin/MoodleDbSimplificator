@@ -15,11 +15,11 @@ public class FirstWordComparer : IEqualityComparer<string>
             return false;
 
         // сначала проверям по совпадении с фамилией, которая идет первой
-        var xSpan = Regexes.SingleWhitespace().Match(x) is { Success: true } xMatch
-            ? x.AsSpan(0, xMatch.Index)
+        var xSpan = Regexes.Whitespaces().Match(x) is { Success: true } xMatch
+            ? x.AsSpan(0, xMatch.Index + xMatch.Length - 1)
             : x.AsSpan();
-        var ySpan = Regexes.SingleWhitespace().Match(y) is { Success: true } yMatch
-            ? y.AsSpan(0, yMatch.Index)
+        var ySpan = Regexes.Whitespaces().Match(y) is { Success: true } yMatch
+            ? y.AsSpan(0, yMatch.Index + yMatch.Length - 1)
             : y.AsSpan();
         return xSpan.EqualsRu(ySpan);
     }
@@ -27,8 +27,8 @@ public class FirstWordComparer : IEqualityComparer<string>
     public int GetHashCode(string obj)
     {
         // расчитываем хэш чисто по фамилии, игнорируем букву 'ё'
-        var span = Regexes.SingleWhitespace().Match(obj) is { Success: true } match
-            ? obj.AsSpan(0, match.Index)
+        var span = Regexes.Whitespaces().Match(obj) is { Success: true } match
+            ? obj.AsSpan(0, match.Index + match.Length - 1)
             : obj.AsSpan();
         return span.GetHashCodeRu();
     }

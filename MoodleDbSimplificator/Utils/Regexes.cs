@@ -4,6 +4,6 @@ namespace MoodleDbSimplificator.Utils;
 
 public static partial class Regexes
 {
-    [GeneratedRegex(@"\s")]
-    public static partial Regex SingleWhitespace();
+    [GeneratedRegex(@"\s+")]
+    public static partial Regex Whitespaces();
 }
